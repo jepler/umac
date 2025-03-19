@@ -53,4 +53,11 @@ static inline unsigned int      umac_get_fb_offset(void)
         return RAM_SIZE - ((DISP_WIDTH * DISP_HEIGHT / 8) + 0x380);
 }
 
+#if ENABLE_AUDIO
+#define umac_get_audio_offset() (RAM_SIZE - 768)
+
+void umac_audio_trap();
+void umac_audio_cfg(int volume, int sndres);
+#endif
+
 #endif
