@@ -173,10 +173,9 @@ printf("screen size=%d screen_base=%x\n", screen_size, screen_base);
                         ROM_WR16(patch_1 + 2, disp_width / 8);   /*        ^^^ */
                         ROM_WR16(patch_1 + 4, 0xc2c5);           /* mulu D5, D1 */
                         ROM_WR16(patch_1 + 6, 0x4e75);           /* rts */
-                        if (patch_1 + 8 > 0x57) {
-                            RERR("patch_1 extends too far (0x%x > 0x57)\n", patch_1 + 8);
-                            RERR("but yolo\n");
-                            // return -1;
+                        if (patch_1 + 8 > 0x58) {
+                            RERR("patch_1 extends too far (0x%x > 0x58)\n", patch_1 + 8);
+                            return -1;
                         }
 
                         // is this the illegal instruction handler entry? if it is, it
