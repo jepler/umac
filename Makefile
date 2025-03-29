@@ -66,7 +66,7 @@ $(MUSASHI)/m68kops.c $(MUSASHI)/m68kops.h:
 prepare:	$(MUSASHI)/m68kops.c $(MUSASHI)/m68kops.h
 
 %.o:	%.c
-	$(CC) $(CFLAGS) $(CFLAGS_CFG) -c $< -o $@
+	$(CC) $(CFLAGS) $(CFLAGS_CFG) -c $< -o $@ -MMD -MF $*.d
 
 main:	$(OBJS)
 	@echo Linking $(OBJS)
@@ -74,7 +74,7 @@ main:	$(OBJS)
 
 clean:
 	make -C $(MUSASHI) clean
-	rm -f $(MY_OBJS) main
+	rm -f $(MY_OBJS) $(OBJS:%.o=%.d) main
 
 ################################################################################
 # Mac driver sources (no need to generally rebuild
@@ -94,3 +94,5 @@ sonydrv.bin:	macsrc/sonydrv.S
 	cpp $< | $(M68K_AS) -o sonydrv.o
 	$(M68K_LD) sonydrv.o -o sonydrv.elf -Ttext=0
 	$(M68K_OBJCOPY) sonydrv.elf -O binary --keep-section=.text $@
+
+-include $(OBJS:%.o=%.d)
