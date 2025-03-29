@@ -49,7 +49,7 @@ static void     print_help(char *n)
         printf("Syntax: %s <options>\n"
                "\t-r <rom path>\t\tDefault 'rom.bin'\n"
                "\t-W <rom dump path>\tDump ROM after patching\n"
-               "\t-d <disc path>\n"
+               "\t-d <disc path> (may be repeated)\n"
                "\t-w\t\t\tEnable persistent disc writes (default R/O)\n"
                "\t-i\t\t\tDisassembled instruction trace\n", n);
 }
@@ -78,6 +78,44 @@ static void     copy_fb(uint32_t *fb_out, uint8_t *fb_in)
         }
 }
 
+static int open_disc(disc_descr_t *desc, int slot, int opt_write, const char *disc_filename) {
+        int ofd;
+        void *disc_base;
+        struct stat sb;
+
+        printf("Opening disc '%s'\n", disc_filename);
+        // FIXME: >1 disc
+        ofd = open(disc_filename, opt_write ? O_RDWR : O_RDONLY);
+        if (ofd < 0) {
+                perror("Disc");
+                return 1;
+        }
+
+        fstat(ofd, &sb);
+        size_t disc_size = sb.st_size;
+
+        /* Discs are always _writable_ from the perspective of
+         * the Mac, but by default data is a MAP_PRIVATE copy
+         * and is not synchronised to the backing file.  If
+         * opt_write, we use MAP_SHARED and open the file RW,
+         * so writes persist to the disc image.
+         */
+        disc_base = mmap(0, disc_size, PROT_READ | PROT_WRITE,
+                         opt_write ? MAP_SHARED : MAP_PRIVATE,
+                         ofd, 0);
+        if (disc_base == MAP_FAILED) {
+                printf("Can't mmap disc!\n");
+                return 1;
+        }
+        printf("Disc mapped at %p, slot %d, size %ld\n", (void *)disc_base, slot, disc_size);
+
+        desc->base = disc_base;
+        desc->read_only = 0;         /* See above */
+        desc->size = disc_size;
+
+        return 0;
+}
+
 /**********************************************************************/
 
 /* The emulator core expects to be given ROM and RAM pointers,
@@ -91,11 +129,9 @@ int     main(int argc, char *argv[])
 {
         void *ram_base;
         void *rom_base;
-        void *disc_base;
         char *rom_filename = "rom.bin";
         char *rom_dump_filename = NULL;
         char *ram_filename = "ram.bin";
-        char *disc_filename = NULL;
         int ofd;
         int ch;
         int opt_disassemble = 0;
@@ -103,6 +139,9 @@ int     main(int argc, char *argv[])
 
         ////////////////////////////////////////////////////////////////////////
         // Args
+
+        disc_descr_t discs[DISC_NUM_DRIVES] = {0};
+        size_t disc_num = 0;
 
         while ((ch = getopt(argc, argv, "r:d:W:ihw")) != -1) {
                 switch (ch) {
@@ -115,7 +154,19 @@ int     main(int argc, char *argv[])
                         break;
 
                 case 'd':
-                        disc_filename = strdup(optarg);
+                        if (disc_num < DISC_NUM_DRIVES) {
+                                if (open_disc(&discs[disc_num], disc_num, opt_write, optarg) != 0) {
+                                        return 1;
+                                }
+                                disc_num ++;
+                        } else {
+                                printf("Too many discs\n");
+                                return 1;
+                        }
+                        break;
+
+                case 'R':
+                        opt_write = 0;
                         break;
 
                 case 'w':
@@ -191,40 +242,6 @@ int     main(int argc, char *argv[])
                 return 1;
         }
         printf("RAM mapped at %p\n", (void *)ram_base);
-
-        disc_descr_t discs[DISC_NUM_DRIVES] = {0};
-
-        if (disc_filename) {
-                printf("Opening disc '%s'\n", disc_filename);
-                // FIXME: >1 disc
-                ofd = open(disc_filename, opt_write ? O_RDWR : O_RDONLY);
-                if (ofd < 0) {
-                        perror("Disc");
-                        return 1;
-                }
-
-                fstat(ofd, &sb);
-                size_t disc_size = sb.st_size;
-
-                /* Discs are always _writable_ from the perspective of
-                 * the Mac, but by default data is a MAP_PRIVATE copy
-                 * and is not synchronised to the backing file.  If
-                 * opt_write, we use MAP_SHARED and open the file RW,
-                 * so writes persist to the disc image.
-                 */
-                disc_base = mmap(0, disc_size, PROT_READ | PROT_WRITE,
-                                 opt_write ? MAP_SHARED : MAP_PRIVATE,
-                                 ofd, 0);
-                if (disc_base == MAP_FAILED) {
-                        printf("Can't mmap disc!\n");
-                        return 1;
-                }
-                printf("Disc mapped at %p, size %ld\n", (void *)disc_base, disc_size);
-
-                discs[0].base = disc_base;
-                discs[0].read_only = 0;         /* See above */
-                discs[0].size = disc_size;
-        }
 
         ////////////////////////////////////////////////////////////////////////
         // SDL/UI init
