@@ -12,6 +12,7 @@
 
 #define SONY_REF_NUM            -5
 #define SONY_STATUS_SIZE        30
+#define SONY_DRIVE_COUNT        2
 
         .org 0
         .globl _start
@@ -31,26 +32,41 @@ name:
         .byte 5
         .ascii ".Sony"
 
+accrun:
+        .word 0xA02F // PostEvent
+        move.l  (faulting_address), %a3
+        move.b  #4, (%a3)                       // Fault! end timeslice
+        
 open:
         // Open()
         // Allocate drive status block and pass to Open routine:
         movem.l %a0-%a1, -(%sp)
-        move.b  #SONY_STATUS_SIZE, %d0
+        move.b  #SONY_STATUS_SIZE*SONY_DRIVE_COUNT, %d0
         .word   0xa71e                          // NewPtrSysClear
         move.l  %a0, %a2
         movem.l (%sp)+, %a0-%a1
         cmp.l   #0, %a2
         beq     2f                              // lolfail
 
+
         move.l  (faulting_address), %a3
         move.b  #0, (%a3)                       // Fault! Open: op 0
 
-        // FIXME: Support variable number of drives
-        // Now add the drive:
-        move.l  #(0x00010000 + (0xffff & SONY_REF_NUM)), %d0
+        // Now add the drives:
+        mov.l   #SONY_DRIVE_COUNT, %d3
+        add.l #6+SONY_STATUS_SIZE*(SONY_DRIVE_COUNT-1), %a2
+
+3:
+        move.l  %d3, %d0
+        swap    %d0                             // refnum in top half of d0, lower is 0000
+        ori.w   #(0xffff & SONY_REF_NUM), %d0   // index & refnum in d0
         move.l  %a2, %a0
-        add.l   #6, %a0
         .word   0xa04e                          // AddDrive
+
+        sub.l   #SONY_STATUS_SIZE, %a2          // next drive on next iteration
+        subq    #1, %d3
+        bne 3b                                  // more drives to add?
+
 1:      rts
 2:      moveq   #-23, %d0
         rts

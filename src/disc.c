@@ -26,6 +26,8 @@
 
 extern void umac_disc_ejected(void);
 
+static uint8_t accrun_flag;
+
 // B2 decls:
 static int16_t SonyOpen(uint32_t pb, uint32_t dce, uint32_t status);
 static int16_t SonyPrime(uint32_t pb, uint32_t dce);
@@ -65,6 +67,10 @@ int     disc_pv_hook(uint8_t opcode)
         case 3: // Status
                 DDBG("[Disc: STATUS]\n");
                 d0 = SonyStatus(ADR24(a0), ADR24(a1));
+                break;
+        case 4: // upcall helper
+                DDBG("[Disc: end timeslice]\n");
+                m68k_end_timeslice();
                 break;
 
         default:
@@ -162,15 +168,16 @@ static sony_drinfo_t *get_drive_info(int num)
 
 void SonyInit(disc_descr_t discs[DISC_NUM_DRIVES])
 {
-        drives[0].num = 0;
-        drives[0].to_be_mounted = 1;
-        drives[0].read_only = discs[0].read_only;
-        drives[0].data = discs[0].base;
-        drives[0].size = discs[0].size;
-        drives[0].op_ctx = discs[0].op_ctx;
-        drives[0].op_read = discs[0].op_read;
-        drives[0].op_write = discs[0].op_write;
-        // FIXME: Disc 2
+        for(int i = 0; i < DISC_NUM_DRIVES; i++) {
+		drives[i].num = 0; // set in SonyOpen
+		drives[i].to_be_mounted = 1;
+		drives[i].read_only = discs[i].read_only;
+		drives[i].data = discs[i].base;
+		drives[i].size = discs[i].size;
+		drives[i].op_ctx = discs[i].op_ctx;
+		drives[i].op_read = discs[i].op_read;
+		drives[i].op_write = discs[i].op_write;
+        }
 }
 
 /*
@@ -227,38 +234,42 @@ int16_t SonyOpen(uint32_t pb, uint32_t dce, uint32_t status)
 	set_dsk_err(0);
 
 	// Install drives
-        //for (int drnum = 0; drnum < NUM_DRIVES; drnum++) {
-        const int drnum = 0;
-        sony_drinfo_t *info = &drives[drnum];
+	int free_drive_number = 1;
+	for (int drnum = 0; drnum < DISC_NUM_DRIVES; drnum++) {
+	    sony_drinfo_t *info = &drives[drnum];
 
-        info->num = FindFreeDriveNumber(1); // ? 1 for internal, 2 for external
-        info->to_be_mounted = 0;
+	    info->num = FindFreeDriveNumber(free_drive_number); // ? 1 for internal, 2 for external
+	    free_drive_number = info->num + 1;
+	    info->to_be_mounted = 0;
 
-        // Original code allocated drive status record here (invoked
-        // trap to NewPtrSysClear), but our driver does this instead
-        // (it's passed in via status parameter), to avoid having to
-        // implement invocation of 68K traps/upcalls from sim env.
-        info->status = status;
-        DDBG(" DrvSts at %08x\n", info->status);
+	    // Original code allocated drive status record here (invoked
+	    // trap to NewPtrSysClear), but our driver does this instead
+	    // (it's passed in via status parameter), to avoid having to
+	    // implement invocation of 68K traps/upcalls from sim env.
+	    info->status = status + 30 * drnum;
+	    DDBG(" DrvSts at %08x gets drnum %d num %d\n", info->status, drnum, info->num);
 
-        // Set up drive status
-        // ME: do 800K, double sided (see IM)
-        WriteMacInt16(info->status + dsQType, sony);
-        WriteMacInt8(info->status + dsInstalled, 1);
-        WriteMacInt8(info->status + dsSides, 0xff); // 2 sides
-        WriteMacInt8(info->status + dsTwoSideFmt, 0xff); //
-        //WriteMacInt8(info->status + dsNewIntf, 0xff);
-        WriteMacInt8(info->status + dsMFMDrive, 0);	// 0 = 400/800K GCR drive)
-        WriteMacInt8(info->status + dsMFMDisk, 0);
-        //WriteMacInt8(info->status + dsTwoMegFmt, 0xff);	// 1.44MB (0 = 720K)
+	    // Set up drive status
+	    // ME: do 800K, double sided (see IM)
+	    WriteMacInt16(info->status + dsQType, sony);
+	    WriteMacInt8(info->status + dsInstalled, 1);
+	    WriteMacInt8(info->status + dsSides, 0xff); // 2 sides
+	    WriteMacInt8(info->status + dsTwoSideFmt, 0xff); //
+	    //WriteMacInt8(info->status + dsNewIntf, 0xff);
+	    WriteMacInt8(info->status + dsMFMDrive, 0);	// 0 = 400/800K GCR drive)
+	    WriteMacInt8(info->status + dsMFMDisk, 0);
+	    //WriteMacInt8(info->status + dsTwoMegFmt, 0xff);	// 1.44MB (0 = 720K)
 
-        // If disk in drive...
-        WriteMacInt8(info->status + dsDiskInPlace, 1);	// Inserted removable disk
-        WriteMacInt8(info->status + dsWriteProt, info->read_only ? 0xff : 0);
-        DDBG(" disk inserted, flagging for mount\n");
-        info->to_be_mounted = 1;
+	    // If disk in drive...
+	    if (info->size) {
+		    WriteMacInt8(info->status + dsDiskInPlace, 1);	// Inserted removable disk
+		    WriteMacInt8(info->status + dsWriteProt, info->read_only ? 0xff : 0);
+		    DDBG(" disk inserted, flagging for mount\n");
+		    info->to_be_mounted = 1;
+	    }
+	}
 
-        // Original code ddded drive to drive queue here (invoked trap
+        // Original code added drive to drive queue here (invoked trap
         // to AddDrive), but our driver does this after this PV call returns.
         // FIXME: In future return a bitmap of drives to add.
         (void)pb;
@@ -369,14 +380,8 @@ int16_t SonyControl(uint32_t pb, uint32_t dce)
 			return set_dsk_err(noErr);
 
                 case 65: {	// Periodic action (accRun, "insert" disks on startup)
-                        static int complained_yet = 0;
-                        if (!complained_yet) {
-                                DERR("SonyControl:accRun: Not supported!\n");
-                                complained_yet = 1;
-                        }
-                        // The original emulation code hooked this to mount_mountable_volumes,
-                        // which called back to PostEvent(diskEvent).
-			return set_dsk_err(-1);
+			accrun_flag = 1;
+			return set_dsk_err(noErr);
                 }
 	}
 
@@ -533,4 +538,41 @@ int16_t SonyStatus(uint32_t pb, uint32_t dce)
         (void)dce;
 
 	return set_dsk_err(err);
+}
+
+#define M68K_REG_LAST (M68K_REG_CPU_TYPE)
+#define ROM_PLUSv3_SONYDRV      0x17d30
+#define offset_accrun 0x18
+#define ROM_BASE 0x400000
+#define accrun_address (ROM_BASE + ROM_PLUSv3_SONYDRV + offset_accrun)
+
+static int PostEvent(int type, int num) {
+	DDBG("PostEvent EventCode=%d EventMsg=%d\n", type, num);
+	uint32_t regs[M68K_REG_LAST];
+	for(int i=0; i<M68K_REG_LAST; i++) 
+	    regs[i] = m68k_get_reg(NULL, i);
+	m68k_set_reg(M68K_REG_D0, num);
+	m68k_set_reg(M68K_REG_A0, type);
+	m68k_set_reg(M68K_REG_PC, accrun_address);
+	int used = m68k_execute(20000);
+	int result = m68k_get_reg(NULL, M68K_REG_D0);
+	if (used >= 20000 || m68k_get_reg(NULL, M68K_REG_PC) != accrun_address + 10) {
+	    DERR("trap call didn't seem to work. used=%d PC=%08x (expected %08x)\n",
+		    used, m68k_get_reg(NULL, M68K_REG_PC), accrun_address + 10);
+	    result = 1; // some kind of failure (but you're probably doomed)
+	}
+	for(int i=0; i<M68K_REG_LAST; i++) 
+	    m68k_set_reg(i, regs[i]);
+	return result;
+}
+
+void disc_tick() {
+	if (!accrun_flag) return;
+	accrun_flag = 0;
+	for (int i = 0; i < DISC_NUM_DRIVES; i++) {
+		if (drives[i].to_be_mounted) {
+			if (PostEvent(7, drives[i].num) == 0)
+			    drives[i].to_be_mounted = 0;
+		}
+	}
 }

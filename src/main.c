@@ -712,6 +712,7 @@ int     umac_loop(void)
         // Device polling
         via_tick(global_time_us);
         mouse_tick();
+        disc_tick();
         kbd_check_work();
 
 	return sim_done;

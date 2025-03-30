@@ -48,5 +48,5 @@ typedef struct {
  */
 void    disc_init(disc_descr_t discs[DISC_NUM_DRIVES]);
 int     disc_pv_hook(uint8_t opcode);
-
+void    disc_tick();
 #endif
