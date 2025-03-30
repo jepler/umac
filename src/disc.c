@@ -262,10 +262,12 @@ int16_t SonyOpen(uint32_t pb, uint32_t dce, uint32_t status)
 
 	    // If disk in drive...
 	    if (info->size) {
-		    WriteMacInt8(info->status + dsDiskInPlace, 1);	// Inserted removable disk
+                    if (drnum == 0)
+                        WriteMacInt8(info->status + dsDiskInPlace, 1);	// Inserted removable disk
+                    else
+                        info->to_be_mounted = 1;
 		    WriteMacInt8(info->status + dsWriteProt, info->read_only ? 0xff : 0);
 		    DDBG(" disk inserted, flagging for mount\n");
-		    info->to_be_mounted = 1;
 	    }
 	}
 
@@ -570,9 +572,13 @@ void disc_tick() {
 	if (!accrun_flag) return;
 	accrun_flag = 0;
 	for (int i = 0; i < DISC_NUM_DRIVES; i++) {
+                sony_drinfo_t *info = &drives[i];
 		if (drives[i].to_be_mounted) {
-			if (PostEvent(7, drives[i].num) == 0)
+                        int inPlace = ReadMacInt8(info->status + dsDiskInPlace);	// Inserted removable disk
+			if (inPlace || PostEvent(7, drives[i].num) == 0) {
 			    drives[i].to_be_mounted = 0;
+                            WriteMacInt8(info->status + dsDiskInPlace, 1);	// Inserted removable disk
+                        }
 		}
 	}
 }
