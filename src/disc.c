@@ -418,7 +418,8 @@ int16_t SonyControl(uint32_t pb, uint32_t dce)
 //				SysEject(info->fh);
 				WriteMacInt8(info->status + dsDiskInPlace, 0);
 
-                                umac_disc_ejected();
+                                if(info->num == 1)
+                                    umac_disc_ejected();
 			}
 			break;
 
@@ -543,10 +544,6 @@ int16_t SonyStatus(uint32_t pb, uint32_t dce)
 }
 
 #define M68K_REG_LAST (M68K_REG_CPU_TYPE)
-#define ROM_PLUSv3_SONYDRV      0x17d30
-#define offset_accrun 0x18
-#define ROM_BASE 0x400000
-#define accrun_address (ROM_BASE + ROM_PLUSv3_SONYDRV + offset_accrun)
 
 static int PostEvent(int type, int num) {
 	DDBG("PostEvent EventCode=%d EventMsg=%d\n", type, num);
@@ -555,12 +552,19 @@ static int PostEvent(int type, int num) {
 	    regs[i] = m68k_get_reg(NULL, i);
 	m68k_set_reg(M68K_REG_D0, num);
 	m68k_set_reg(M68K_REG_A0, type);
-	m68k_set_reg(M68K_REG_PC, accrun_address);
-	int used = m68k_execute(20000);
+	uint32_t new_sp = regs[M68K_REG_SP] - 4;
+	cpu_write_word(new_sp, 0xA02F); // PostEvent
+	cpu_write_word(new_sp+2, 0x7180); // emul_ret
+	m68k_set_reg(M68K_REG_PC, new_sp); // PostEvent
+	m68k_set_reg(M68K_REG_SP, new_sp); // Emul_Ret
+	int used = m68k_execute(80000);
 	int result = m68k_get_reg(NULL, M68K_REG_D0);
-	if (used >= 20000 || m68k_get_reg(NULL, M68K_REG_PC) != accrun_address + 10) {
-	    DERR("trap call didn't seem to work. used=%d PC=%08x (expected %08x)\n",
-		    used, m68k_get_reg(NULL, M68K_REG_PC), accrun_address + 10);
+	if (used >= 20000 || m68k_get_reg(NULL, M68K_REG_PC) != new_sp + 4 ||
+                m68k_get_reg(NULL, M68K_REG_SP) != new_sp) {
+	    DERR("trap call didn't seem to work. used=%d PC=%08x (expected %08x) SP=%08x (expected %08x)\n",
+		    used,
+                    m68k_get_reg(NULL, M68K_REG_PC), new_sp+4,
+                    m68k_get_reg(NULL, M68K_REG_SP), new_sp);
 	    result = 1; // some kind of failure (but you're probably doomed)
 	}
 	for(int i=0; i<M68K_REG_LAST; i++) 

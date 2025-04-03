@@ -243,6 +243,13 @@
 #define M68K_FAST_FUNC(x)       __not_in_flash_func(x)
 #endif
 
+/* If ON, CPU will support "emul_op" instructions from 0x7100..0x713f by
+ * calling m68k_end_timeslice when they are encountered. The caller can (must)
+ * check the IR register and implement the operation.
+ * If off, these remain illegal instructions.
+ */
+#define M68K_EMUL_OP OPT_ON
+
 #endif /* M68K_COMPILE_FOR_MAME */
 
 /* ======================================================================== */
