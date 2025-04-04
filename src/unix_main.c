@@ -113,6 +113,7 @@ static int open_disc_single(unix_disc_descr_t *desc, int slot, int opt_write, co
         disc_base = mmap(0, disc_size, PROT_READ | PROT_WRITE,
                          opt_write ? MAP_SHARED : MAP_PRIVATE,
                          ofd, 0);
+	close(ofd);
         if (disc_base == MAP_FAILED) {
                 printf("Can't mmap disc!\n");
                 return 1;
