@@ -144,6 +144,7 @@ typedef struct sony_drive_info {
 	void *op_ctx;
 	disc_op_read op_read;   // Callback for read (when data == 0)
 	disc_op_write op_write; //  ''    ''    write  ''
+        disc_op_next op_next;   // Callback for mount next disc
 } sony_drinfo_t;
 
 // List of drives handled by this driver
@@ -166,17 +167,23 @@ static sony_drinfo_t *get_drive_info(int num)
  *  Initialization
  */
 
-void SonyInit(disc_descr_t discs[DISC_NUM_DRIVES])
+static void SonyInit1(sony_drinfo_t *drive, disc_descr_t *disc)
+{
+	drive->to_be_mounted = 1;
+	drive->read_only = disc->read_only;
+	drive->data = disc->base;
+	drive->size = disc->size;
+	drive->op_ctx = disc->op_ctx;
+	drive->op_read = disc->op_read;
+	drive->op_write = disc->op_write;
+	drive->op_next = disc->op_next;
+}
+
+static void SonyInit(disc_descr_t discs[DISC_NUM_DRIVES])
 {
         for(int i = 0; i < DISC_NUM_DRIVES; i++) {
 		drives[i].num = 0; // set in SonyOpen
-		drives[i].to_be_mounted = 1;
-		drives[i].read_only = discs[i].read_only;
-		drives[i].data = discs[i].base;
-		drives[i].size = discs[i].size;
-		drives[i].op_ctx = discs[i].op_ctx;
-		drives[i].op_read = discs[i].op_read;
-		drives[i].op_write = discs[i].op_write;
+		SonyInit1(&drives[i], &discs[i]);
         }
 }
 
@@ -419,7 +426,13 @@ int16_t SonyControl(uint32_t pb, uint32_t dce)
 				WriteMacInt8(info->status + dsDiskInPlace, 0);
 
                                 if(info->num == 1)
-                                    umac_disc_ejected();
+					umac_disc_ejected();
+				else if(info->op_next) {
+					disc_descr_t *new_disc = info->op_next(info->op_ctx);
+					if (new_disc) {
+						SonyInit1(info, new_disc);
+					}
+				}
 			}
 			break;
 

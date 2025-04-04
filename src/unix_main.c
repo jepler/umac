@@ -129,13 +129,17 @@ static int open_disc_single(unix_disc_descr_t *desc, int slot, int opt_write, co
 
 extern int asprintf(char **restrict strp, const char *restrict fmt, ...);
 
-static int disc_open_next(void *desc_in) {
+static disc_descr_t *disc_open_next(void *desc_in) {
 	unix_disc_descr_t *desc = desc_in;
 	if (desc->num_names == 0) {
-		return 1;
+		return 0;
 	}
+        munmap(desc->desc->base, desc->desc->size);
+        desc->desc->base = 0;
 	desc->idx = (desc->idx + 1) % desc->num_names;
-	return open_disc_single(desc, desc->slot, desc->opt_write, desc->names[desc->idx]);
+	int r = open_disc_single(desc, desc->slot, desc->opt_write, desc->names[desc->idx]);
+	if (r == 0) return desc->desc;
+	return 0;
 }
 
 static int open_disc_collection(unix_disc_descr_t *desc, int slot, int opt_write, const char *disc_filename) {
