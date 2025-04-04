@@ -587,7 +587,6 @@ static int PostEvent(int type, int num) {
 
 void disc_tick() {
 	if (!accrun_flag) return;
-	accrun_flag = 0;
 	for (int i = 0; i < DISC_NUM_DRIVES; i++) {
                 sony_drinfo_t *info = &drives[i];
 		if (drives[i].to_be_mounted) {
