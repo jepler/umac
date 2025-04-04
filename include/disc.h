@@ -29,13 +29,15 @@
 
 typedef int (*disc_op_read)(void *ctx, uint8_t *data, unsigned int offset, unsigned int len);
 typedef int (*disc_op_write)(void *ctx, uint8_t *data, unsigned int offset, unsigned int len);
-typedef struct {
+typedef int (*disc_op_next)(void *ctx);
+typedef struct disc_desc {
         uint8_t *base;
         unsigned int size;
         int read_only;
         void *op_ctx;
         disc_op_read op_read;
         disc_op_write op_write;
+        disc_op_next op_next;
 } disc_descr_t;
 
 #define DISC_NUM_DRIVES         2

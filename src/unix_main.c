@@ -28,6 +28,8 @@
  */
 
 #include <stdio.h>
+#include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <sys/mman.h>
@@ -78,13 +80,21 @@ static void     copy_fb(uint32_t *fb_out, uint8_t *fb_in)
         }
 }
 
-static int open_disc(disc_descr_t *desc, int slot, int opt_write, const char *disc_filename) {
-        int ofd;
-        void *disc_base;
-        struct stat sb;
+typedef struct {
+    disc_descr_t *desc;
+    int opt_write;
+    int slot;
+    int idx, num_names;
+    char **names;
+} unix_disc_descr_t;
+
+static int open_disc_single(unix_disc_descr_t *desc, int slot, int opt_write, const char *disc_filename) {
+	int ofd;
+	void *disc_base;
+	struct stat sb;
 
         printf("Opening disc '%s'\n", disc_filename);
-        // FIXME: >1 disc
+
         ofd = open(disc_filename, opt_write ? O_RDWR : O_RDONLY);
         if (ofd < 0) {
                 perror("Disc");
@@ -109,11 +119,76 @@ static int open_disc(disc_descr_t *desc, int slot, int opt_write, const char *di
         }
         printf("Disc mapped at %p, slot %d, size %ld\n", (void *)disc_base, slot, disc_size);
 
-        desc->base = disc_base;
-        desc->read_only = 0;         /* See above */
-        desc->size = disc_size;
+        desc->desc->base = disc_base;
+        desc->desc->read_only = 0;         /* See above */
+        desc->desc->size = disc_size;
+        desc->slot = slot;
 
         return 0;
+}
+
+extern int asprintf(char **restrict strp, const char *restrict fmt, ...);
+
+static int disc_open_next(void *desc_in) {
+	unix_disc_descr_t *desc = desc_in;
+	if (desc->num_names == 0) {
+		return 1;
+	}
+	desc->idx = (desc->idx + 1) % desc->num_names;
+	return open_disc_single(desc, desc->slot, desc->opt_write, desc->names[desc->idx]);
+}
+
+static int open_disc_collection(unix_disc_descr_t *desc, int slot, int opt_write, const char *disc_filename) {
+	struct stat sb;
+        printf("Opening disc collection '%s'\n", disc_filename);
+	DIR *d = opendir(disc_filename);
+	char **names = malloc(0);
+	struct dirent *ent;
+	int cnt;
+	for(; errno=0, ent = readdir(d);) {
+		names = realloc(names, sizeof(const char *) * (cnt + 1));
+		asprintf(&names[cnt], "%s/%s", disc_filename, ent->d_name);
+		stat(names[cnt], &sb);
+		if((sb.st_mode & S_IFMT) == S_IFDIR) {
+			continue;
+		}
+		printf("Found disc %s\n", names[cnt]);
+		cnt++;
+	}
+	if (errno != 0) {
+		perror("readdir");
+	}
+	closedir(d);
+	if(cnt == 0) {
+                printf("Didn't find any discs\n");
+                return 1;
+	}
+	desc->names = names;
+	desc->num_names = cnt;
+	desc->desc->op_next = disc_open_next;
+	desc->desc->op_ctx = desc;
+	return open_disc_single(desc, slot, opt_write, names[0]);
+}
+	
+static int open_disc(unix_disc_descr_t *desc, int slot, int opt_write, const char *disc_filename) {
+	struct stat sb;
+
+	int r = stat(disc_filename, &sb);
+	if (r < 0) { 
+		perror("Disc");
+		return 1;
+	}
+
+	if((sb.st_mode & S_IFMT) == S_IFDIR) {
+		if(slot == 0) {
+			printf("Initial disc argument must be a file, not a directory\n");
+			return 1;
+		}
+		return open_disc_collection(desc, slot, opt_write, disc_filename);
+	} else {
+		desc->desc->op_next = 0;
+		return open_disc_single(desc, slot, opt_write, disc_filename);
+	}
 }
 
 /**********************************************************************/
@@ -141,6 +216,12 @@ int     main(int argc, char *argv[])
         // Args
 
         disc_descr_t discs[DISC_NUM_DRIVES] = {0};
+        unix_disc_descr_t udiscs[DISC_NUM_DRIVES] = {0};
+
+	for(int i=0; i<DISC_NUM_DRIVES; i++) {
+		udiscs[i].desc = &discs[i];
+	}
+
         size_t disc_num = 0;
 
         while ((ch = getopt(argc, argv, "r:d:W:ihw")) != -1) {
@@ -155,7 +236,7 @@ int     main(int argc, char *argv[])
 
                 case 'd':
                         if (disc_num < DISC_NUM_DRIVES) {
-                                if (open_disc(&discs[disc_num], disc_num, opt_write, optarg) != 0) {
+                                if (open_disc(&udiscs[disc_num], disc_num, opt_write, optarg) != 0) {
                                         return 1;
                                 }
                                 disc_num ++;
