@@ -78,6 +78,33 @@ static void     copy_fb(uint32_t *fb_out, uint8_t *fb_in)
         }
 }
 
+/* Accept a keyboard modifier configuration string */
+static void parse_modifier_config(const char *arg) {
+	while(*arg) {
+		int src, mod;
+		if(!strncmp(arg, "ctrl", 4)) { src = UNIX_CTRL; arg += 4; }
+		else if(!strncmp(arg, "alt", 3)) { src = UNIX_ALT; arg += 3; }
+		else if(!strncmp(arg, "gui", 3)) { src = UNIX_GUI; arg += 3; }
+		else {
+parse_error:
+			printf("Unrecognized modifier configuration starting at '%s'\n", arg);
+			abort();
+		}
+		if(*arg != '=') goto parse_error;
+		arg++;
+		if(!strncmp(arg, "option", 6)) { mod = MKC_Option; arg += 6; }
+		else if(!strncmp(arg, "control", 7)) { mod = MKC_Control; arg += 7; }
+		else if(!strncmp(arg, "command", 7)) { mod = MKC_Command; arg += 7; }
+		else goto parse_error;
+
+		sdl_mods[src] = mod;
+		if (!*arg) break;
+		if (*arg != ',') goto parse_error;
+		arg++;
+	}
+}
+
+
 /**********************************************************************/
 
 /* The emulator core expects to be given ROM and RAM pointers,
@@ -104,7 +131,7 @@ int     main(int argc, char *argv[])
         ////////////////////////////////////////////////////////////////////////
         // Args
 
-        while ((ch = getopt(argc, argv, "r:d:W:ihw")) != -1) {
+        while ((ch = getopt(argc, argv, "r:d:k:W:ihw")) != -1) {
                 switch (ch) {
                 case 'r':
                         rom_filename = strdup(optarg);
@@ -116,6 +143,10 @@ int     main(int argc, char *argv[])
 
                 case 'd':
                         disc_filename = strdup(optarg);
+                        break;
+
+                case 'k':
+                        parse_modifier_config(optarg);
                         break;
 
                 case 'w':

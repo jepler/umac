@@ -9,6 +9,9 @@
 
 #include "keymap.h"
 
+enum { UNIX_CTRL, UNIX_ALT, UNIX_GUI };
+static int sdl_mods[3] = { MKC_Control, MKC_Option, MKC_Command };
+
 static inline int SDLScan2MacKeyCode(SDL_Scancode i)
 {
 	int v = MKC_None;
@@ -103,11 +106,11 @@ static inline int SDLScan2MacKeyCode(SDL_Scancode i)
         case SDL_SCANCODE_RSHIFT:
         case SDL_SCANCODE_LSHIFT: v = MKC_Shift; break;
         case SDL_SCANCODE_RCTRL:
-        case SDL_SCANCODE_LCTRL: v = MKC_Control; break;
+        case SDL_SCANCODE_LCTRL: v = sdl_mods[UNIX_CTRL]; break;
         case SDL_SCANCODE_RALT:
-        case SDL_SCANCODE_LALT: v = MKC_Option; break;
+        case SDL_SCANCODE_LALT: v = sdl_mods[UNIX_ALT]; break;
         case SDL_SCANCODE_RGUI:
-        case SDL_SCANCODE_LGUI: v = MKC_Command; break;
+        case SDL_SCANCODE_LGUI: v = sdl_mods[UNIX_GUI]; break;
 
         case SDL_SCANCODE_KP_A: v = MKC_A; break;
         case SDL_SCANCODE_KP_B: v = MKC_B; break;

@@ -175,6 +175,10 @@ screen memory (see `tools/mem2scr.c`).
 
 For a `DEBUG` build, add `-i` to get a disassembly trace of execution.
 
+To use a different modifier layout, use `-k`. For instance, to map
+host ctrl keys to mac Option and host Alt keys to mac Command, use
+`ctrl=option,alt=command`.
+
 Finally, the `-W <file>` parameter writes out the ROM image after
 patches are applied.  This can be useful to prepare a ROM image for
 embedded builds, so as to avoid having to patch the ROM at runtime.
