@@ -149,7 +149,7 @@ static int open_disc_collection(unix_disc_descr_t *desc, int slot, int opt_write
 	DIR *d = opendir(disc_filename);
 	char **names = malloc(0);
 	struct dirent *ent;
-	int cnt;
+	int cnt=0;
 	for(; errno=0, ent = readdir(d);) {
 		names = realloc(names, sizeof(const char *) * (cnt + 1));
 		asprintf(&names[cnt], "%s/%s", disc_filename, ent->d_name);
