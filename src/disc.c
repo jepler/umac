@@ -427,11 +427,12 @@ int16_t SonyControl(uint32_t pb, uint32_t dce)
 
                                 if(info->num == 1)
 					umac_disc_ejected();
-				else if(info->op_next) {
-					disc_descr_t *new_disc = info->op_next(info->op_ctx);
-					if (new_disc) {
-						SonyInit1(info, new_disc);
-					}
+			}
+			if(info->op_next) {
+				DERR("DISC: mount new\n");
+				disc_descr_t *new_disc = info->op_next(info->op_ctx);
+				if (new_disc) {
+					SonyInit1(info, new_disc);
 				}
 			}
 			break;
