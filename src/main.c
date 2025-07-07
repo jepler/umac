@@ -475,6 +475,15 @@ void    FAST_FUNC(cpu_write_byte)(unsigned int address, unsigned int value)
                         exit_error("Disc PV hook failed (%02x)", value);
                 return;
         }
+        if (address == PV_UART_ADDR) {
+            if(value < 32 && value != '\r' && value != '\n') {
+                printf("0x%02x", value);
+            } else {
+                putchar(value);
+            }
+            fflush(stdout);
+            return;
+        }
         printf("Ignoring write %02x to address %08x\n", value&0xff, address);
 }
 

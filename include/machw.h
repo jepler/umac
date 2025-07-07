@@ -35,6 +35,7 @@
 #define RAM_HIGH_ADDR   0x600000
 
 #define PV_SONY_ADDR    0xc00069        /* Magic address for replacement driver PV ops */
+#define PV_UART_ADDR    0xc0006A        /* Magic address for debug uart */
 
 ////////////////////////////////////////////////////////////////////////////////
 // RAM accessors
