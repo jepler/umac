@@ -46,6 +46,7 @@
 #include "scc.h"
 #include "rom.h"
 #include "disc.h"
+#include "ringbuf.h"
 
 #ifdef PICO
 #include "pico.h"
@@ -209,6 +210,7 @@ static uint8_t  via_rb_in(void)
  */
 #define KBD_CMD_GET_MODEL       0x16
 #define KBD_CMD_INQUIRY         0x10
+#define KBD_CMD_INSTANT         0x14
 #define KBD_MODEL               5
 #define KBD_RSP_NULL            0x7b
 
@@ -225,7 +227,9 @@ static void     via_sr_tx(uint8_t data)
         kbd_last_cmd_time = global_time_us;
 }
 
-static int kbd_pending_evt = -1;
+uint8_t kbd_pending_evt_array[32];
+ringbuf_t kbd_pending_evt = {kbd_pending_evt_array, sizeof(kbd_pending_evt_array), 0, 0};
+
 /* Emulate the keyboard: receive commands (such as an inquiry, polling
  * for keypresses) and respond using via_sr_rx().
  */
@@ -236,12 +240,15 @@ static void     kbd_rx(uint8_t data)
         case KBD_CMD_GET_MODEL:
                 via_sr_rx(0x01 | (KBD_MODEL << 1));
                 break;
+        case KBD_CMD_INSTANT:
         case KBD_CMD_INQUIRY:
-                if (kbd_pending_evt == -1) {
-                        via_sr_rx(KBD_RSP_NULL);
-                } else {
-                        via_sr_rx(kbd_pending_evt);
-                        kbd_pending_evt = -1;
+                {
+                        int evt = KBD_RSP_NULL;
+                        if (ringbuf_avail(&kbd_pending_evt)) {
+                                evt = ringbuf_get(&kbd_pending_evt);
+                                printf("via sr rx %s %02x\n", data == KBD_CMD_INSTANT ? "INSTANT" : "inquiry", evt);
+                        }
+                        via_sr_rx(evt);
                 }
         break;
 
@@ -267,12 +274,18 @@ static void     kbd_check_work(void)
 
 void    umac_kbd_event(uint8_t scancode, int down)
 {
-        if (kbd_pending_evt >= 0) {
-                MDBG("KBD: Received event %02x with event %02x pending!\n",
-                     scancode, kbd_pending_evt);
-                /* FIXME: Add a queue */
+        int result = 0;
+        if (scancode & 0x80) {
+            result = ringbuf_put(&kbd_pending_evt, 0x79);
+            scancode &= ~0x80;
         }
-        kbd_pending_evt = scancode | (down ? 0 : 0x80);
+        if (result == 0) {
+            result = ringbuf_put(&kbd_pending_evt, scancode | (down ? 0 : 0x80));
+        }
+        if (result < 0) {
+                MERR("KBD: Received event %02x with full queue. Event discarded.\n",
+                     scancode);
+        }
 }
 
 // VIA IRQ output hook:
