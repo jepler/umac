@@ -349,7 +349,6 @@ int     main(int argc, char *argv[])
         SDL_SetWindowGrab(window, SDL_TRUE);
         SDL_SetRelativeMouseMode(SDL_TRUE);
 
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
 
         renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
         if (!renderer) {
