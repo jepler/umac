@@ -196,6 +196,43 @@ static int open_disc(unix_disc_descr_t *desc, int slot, int opt_write, const cha
 	}
 }
 
+// from micropython
+#include <termios.h>
+#include <unistd.h>
+#include <poll.h>
+static struct termios orig_termios;
+
+static void stdio_mode_raw(void) {
+    // save and set terminal settings
+    tcgetattr(0, &orig_termios);
+    static struct termios termios;
+    termios = orig_termios;
+    termios.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    termios.c_cflag = (termios.c_cflag & ~(CSIZE | PARENB)) | CS8;
+    termios.c_lflag = 0;
+    termios.c_cc[VMIN] = 1;
+    termios.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSAFLUSH, &termios);
+}
+
+static void stdio_mode_orig(void) {
+    // restore terminal settings
+    tcsetattr(0, TCSAFLUSH, &orig_termios);
+}
+
+int pv_uart_read() {
+
+    struct pollfd p = { .fd = 0, .events = POLLIN };
+    int r = poll(&p, 1, 0);
+    if (r > 0) {
+        unsigned char result;
+        r = read(0, &result, 1);
+        if (r == 1) return result;
+    }
+    return EOF;
+}
+
+
 /**********************************************************************/
 
 /* The emulator core expects to be given ROM and RAM pointers,
@@ -346,7 +383,7 @@ int     main(int argc, char *argv[])
                 perror("SDL window");
                 return 1;
         }
-        SDL_SetWindowGrab(window, SDL_TRUE);
+        SDL_SetWindowGrab(window, SDL_FALSE);
         SDL_SetRelativeMouseMode(SDL_TRUE);
 
 
@@ -371,9 +408,11 @@ int     main(int argc, char *argv[])
 
         umac_init(ram_base, rom_base, discs);
         umac_opt_disassemble(opt_disassemble);
+        stdio_mode_raw();
 
         ////////////////////////////////////////////////////////////////////////
         // Main loop
+
 
         int done = 0;
         int mouse_button = 0;
@@ -395,7 +434,6 @@ int     main(int argc, char *argv[])
                         case SDL_KEYUP: {
                                 int c = SDLScan2MacKeyCode(event.key.keysym.scancode);
                                 c = (c << 1) | 1;
-                                printf("Key 0x%x -> 0x%x\n", event.key.keysym.scancode, c);
                                 if (c != MKC_None)
                                         umac_kbd_event(c, (event.type == SDL_KEYDOWN));
                         } break;
@@ -441,5 +479,6 @@ int     main(int argc, char *argv[])
                 }
         } while (!done);
 
+        stdio_mode_orig();
         return 0;
 }

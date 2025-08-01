@@ -82,6 +82,8 @@ static int disassemble = 0;
 
 static void    update_overlay_layout(void);
 
+extern int pv_uart_read();
+
 ////////////////////////////////////////////////////////////////////////////////
 
 static int      m68k_dump_regs(char *buf, int len)
@@ -246,7 +248,6 @@ static void     kbd_rx(uint8_t data)
                         int evt = KBD_RSP_NULL;
                         if (ringbuf_avail(&kbd_pending_evt)) {
                                 evt = ringbuf_get(&kbd_pending_evt);
-                                printf("via sr rx %s %02x\n", data == KBD_CMD_INSTANT ? "INSTANT" : "inquiry", evt);
                         }
                         via_sr_rx(evt);
                 }
@@ -401,6 +402,10 @@ unsigned int    FAST_FUNC(cpu_read_word)(unsigned int address)
         if (IS_ROM(address))
                 return ROM_RD16(address & (ROM_SIZE - 1));
 
+        if (address == PV_UART_ADDR) {
+                return pv_uart_read();
+        }
+
         if (IS_TESTSW(address))
                 return 0;
 
@@ -476,11 +481,7 @@ void    FAST_FUNC(cpu_write_byte)(unsigned int address, unsigned int value)
                 return;
         }
         if (address == PV_UART_ADDR) {
-            if(value < 32 && value != '\r' && value != '\n') {
-                printf("0x%02x", value);
-            } else {
-                putchar(value);
-            }
+            putchar(value);
             fflush(stdout);
             return;
         }

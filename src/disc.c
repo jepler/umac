@@ -16,6 +16,7 @@
 #include "m68k.h"
 #include "machw.h"
 
+#undef DEBUG
 #ifdef DEBUG
 #define DDBG(...)       printf(__VA_ARGS__)
 #else
